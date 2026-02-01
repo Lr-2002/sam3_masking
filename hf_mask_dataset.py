@@ -21,11 +21,9 @@ except Exception:  # pragma: no cover - optional dependency
 import mask_humans
 
 
-DEFAULT_LOCAL_ROOT = Path("/home/lr-2002/project/DataArm/dataarm/data/lerobot_datasets")
-DEFAULT_OUTPUT_ROOT = Path(
-    "/home/lr-2002/project/DataArm/dataarm/third-plays/mask_processing/outputs"
-)
-DEFAULT_RELATIVE_TO = Path("/home/lr-2002/project/DataArm/dataarm/data")
+DEFAULT_LOCAL_ROOT = None
+DEFAULT_OUTPUT_ROOT = None
+DEFAULT_RELATIVE_TO = None
 
 
 def _parse_args() -> argparse.Namespace:
@@ -65,7 +63,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--local-root",
-        default=str(DEFAULT_LOCAL_ROOT),
+        default=None,
         help="Root directory to copy the dataset into.",
     )
     parser.add_argument(
@@ -75,12 +73,12 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-root",
-        default=str(DEFAULT_OUTPUT_ROOT),
+        default=None,
         help="Root output directory for masked videos and masks.",
     )
     parser.add_argument(
         "--relative-to",
-        default=str(DEFAULT_RELATIVE_TO),
+        default=None,
         help="Base path used to preserve relative output structure.",
     )
     parser.add_argument(
@@ -144,6 +142,48 @@ def _dataset_to_local_dir(dataset_id: str, local_root: Path) -> Path:
         owner, name = dataset_id.split("/", 1)
         return local_root / f"{owner}_{name}_dataset"
     return local_root / f"{dataset_id}_dataset"
+
+
+def _find_existing_data_root(start: Path) -> Path | None:
+    for parent in [start, *start.parents]:
+        candidate = parent / "data" / "lerobot_datasets"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _default_local_root() -> Path:
+    cwd = Path.cwd()
+    existing = _find_existing_data_root(cwd)
+    if existing is not None:
+        return existing
+    return cwd / "data" / "lerobot_datasets"
+
+
+def _default_output_root() -> Path:
+    return Path.cwd() / "outputs"
+
+
+def _default_relative_to(local_root: Path) -> Path:
+    parts = local_root.parts
+    if len(parts) >= 2 and parts[-2:] == ("data", "lerobot_datasets"):
+        return local_root.parent
+    return local_root
+
+
+def _ensure_dir(path: Path, fallback: Path | None = None) -> Path:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except PermissionError:
+        if fallback is None:
+            raise
+        print(
+            f"WARNING: no permission to create {path}. Using {fallback} instead.",
+            file=sys.stderr,
+        )
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
 
 
 def _normalize_token(token: str) -> set[str]:
@@ -319,11 +359,16 @@ def main() -> None:
                 "Try setting --cache-dir or inspect ~/.cache/huggingface."
             )
 
-    local_root = Path(args.local_root)
-    local_dir = Path(args.local_dir) if args.local_dir else _dataset_to_local_dir(
-        args.dataset_id, local_root
-    )
-    local_dir.mkdir(parents=True, exist_ok=True)
+    local_root = Path(args.local_root) if args.local_root else _default_local_root()
+    local_root = _ensure_dir(local_root, Path.cwd() / "lerobot_datasets")
+    if args.local_dir:
+        local_dir = _ensure_dir(Path(args.local_dir), local_root / Path(args.local_dir).name)
+    else:
+        dataset_name = _dataset_to_local_dir(args.dataset_id, Path("")).name
+        local_dir = _ensure_dir(
+            _dataset_to_local_dir(args.dataset_id, local_root),
+            Path.cwd() / "lerobot_datasets" / dataset_name,
+        )
     print(f"Copying from cache {dataset_root} -> {local_dir}")
     _copy_tree(dataset_root, local_dir, args.overwrite_copy)
 
@@ -338,8 +383,9 @@ def main() -> None:
     if not videos:
         raise SystemExit(f"ERROR: no .mp4 files found under {local_dir}")
 
-    output_root = Path(args.output_root)
-    relative_to = Path(args.relative_to) if args.relative_to else None
+    output_root = Path(args.output_root) if args.output_root else _default_output_root()
+    output_root = _ensure_dir(output_root, Path.cwd() / "outputs")
+    relative_to = Path(args.relative_to) if args.relative_to else _default_relative_to(local_root)
     for src in videos:
         rel_parent = _relative_parent(src, relative_to, local_dir)
         out_dir = output_root / rel_parent

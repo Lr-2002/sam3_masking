@@ -25,7 +25,7 @@ Use `hf_mask_dataset.py` to download a dataset from Hugging Face via `datasets`,
 copy the cached files to a local dataset directory, then mask all MP4s.
 
 ```bash
-/home/lr-2002/anaconda3/envs/sam3/bin/python hf_mask_dataset.py \
+py hf_mask_dataset.py \
   --dataset-id lr-2002/exp-insert_lego \
   --progress
 ```
