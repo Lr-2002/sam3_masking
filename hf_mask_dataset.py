@@ -11,10 +11,12 @@ from pathlib import Path
 import datasets
 from datasets import config as ds_config
 
-try:  # optional, used for hub cache discovery
+try:  # optional, used for hub cache discovery + fallback download
     from huggingface_hub import constants as hub_constants
+    from huggingface_hub import snapshot_download
 except Exception:  # pragma: no cover - optional dependency
     hub_constants = None
+    snapshot_download = None
 
 import mask_humans
 
@@ -44,6 +46,17 @@ def _parse_args() -> argparse.Namespace:
         "--config",
         default=None,
         help="Optional dataset config name if the dataset defines configs.",
+    )
+    parser.add_argument(
+        "--download-backend",
+        choices=["auto", "datasets", "hub"],
+        default="auto",
+        help=(
+            "How to download the dataset. "
+            '"datasets" uses datasets.load_dataset; '
+            '"hub" uses huggingface_hub.snapshot_download; '
+            '"auto" tries datasets then falls back to hub.'
+        ),
     )
     parser.add_argument(
         "--cache-dir",
@@ -203,6 +216,49 @@ def _select_best_root(candidates: list[Path]) -> Path | None:
     return best_root
 
 
+def _download_with_datasets(args: argparse.Namespace) -> None:
+    load_kwargs = dict(
+        path=args.dataset_id,
+        name=args.config,
+        split=args.split,
+        cache_dir=args.cache_dir,
+        download_mode="reuse_dataset_if_exists",
+    )
+    datasets.load_dataset(**load_kwargs)
+
+
+def _download_with_hub(args: argparse.Namespace) -> Path:
+    if snapshot_download is None:
+        raise SystemExit(
+            "ERROR: huggingface_hub is not installed. "
+            "Install it or use --download-backend datasets."
+        )
+    return Path(
+        snapshot_download(
+            repo_id=args.dataset_id,
+            repo_type="dataset",
+            cache_dir=args.cache_dir,
+        )
+    )
+
+
+def _download_dataset(args: argparse.Namespace) -> Path | None:
+    if args.download_backend == "datasets":
+        _download_with_datasets(args)
+        return None
+    if args.download_backend == "hub":
+        return _download_with_hub(args)
+    try:
+        _download_with_datasets(args)
+        return None
+    except Exception as exc:
+        print(
+            f"WARNING: datasets.load_dataset failed ({exc}); falling back to hub download.",
+            file=sys.stderr,
+        )
+        return _download_with_hub(args)
+
+
 def _copy_tree(src_root: Path, dst_root: Path, overwrite: bool) -> None:
     for path in src_root.rglob("*"):
         rel = path.relative_to(src_root)
@@ -252,28 +308,16 @@ def main() -> None:
             "Download sam3.pt and pass --model /path/to/sam3.pt"
         )
 
-    # Trigger HF download via datasets.
-    load_kwargs = dict(
-        path=args.dataset_id,
-        name=args.config,
-        split=args.split,
-        cache_dir=args.cache_dir,
-        download_mode="reuse_dataset_if_exists",
-        trust_remote_code=True,
-    )
-    try:
-        datasets.load_dataset(**load_kwargs)
-    except Exception as exc:
-        raise SystemExit(f"ERROR: failed to load dataset {args.dataset_id}: {exc}") from exc
-
-    cache_roots = _cache_roots(args.cache_dir)
-    candidates = _find_candidate_roots(args.dataset_id, cache_roots)
-    dataset_root = _select_best_root(candidates)
+    dataset_root = _download_dataset(args)
     if dataset_root is None:
-        raise SystemExit(
-            "ERROR: could not locate downloaded dataset in HF cache. "
-            "Try setting --cache-dir or inspect ~/.cache/huggingface."
-        )
+        cache_roots = _cache_roots(args.cache_dir)
+        candidates = _find_candidate_roots(args.dataset_id, cache_roots)
+        dataset_root = _select_best_root(candidates)
+        if dataset_root is None:
+            raise SystemExit(
+                "ERROR: could not locate downloaded dataset in HF cache. "
+                "Try setting --cache-dir or inspect ~/.cache/huggingface."
+            )
 
     local_root = Path(args.local_root)
     local_dir = Path(args.local_dir) if args.local_dir else _dataset_to_local_dir(

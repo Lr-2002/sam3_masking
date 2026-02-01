@@ -30,6 +30,10 @@ copy the cached files to a local dataset directory, then mask all MP4s.
   --progress
 ```
 
+If `datasets.load_dataset` fails (e.g. dataset script issues), the script
+falls back to a Hub snapshot download. You can force a backend with
+`--download-backend datasets` or `--download-backend hub`.
+
 ## Notes
 - Default prompt is `"person"`. Use comma-separated prompts for multiple classes.
 - The script looks for MP4s in the dataset path first, then `./videos`, then current directory.
