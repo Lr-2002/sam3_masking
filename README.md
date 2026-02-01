@@ -19,6 +19,17 @@ Outputs:
 - `outputs/<video>_masked.mp4`: human pixels set to black
 - `outputs/<video>_mask.mp4`: binary mask video (white = human)
 
+## HF dataset download + mask
+
+Use `hf_mask_dataset.py` to download a dataset from Hugging Face via `datasets`,
+copy the cached files to a local dataset directory, then mask all MP4s.
+
+```bash
+/home/lr-2002/anaconda3/envs/sam3/bin/python hf_mask_dataset.py \
+  --dataset-id lr-2002/exp-insert_lego \
+  --progress
+```
+
 ## Notes
 - Default prompt is `"person"`. Use comma-separated prompts for multiple classes.
 - The script looks for MP4s in the dataset path first, then `./videos`, then current directory.
