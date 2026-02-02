@@ -72,6 +72,15 @@ def _parse_args() -> argparse.Namespace:
         help="Use FP16 (recommended only on GPU).",
     )
     parser.add_argument(
+        "--force-fp32",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Force model to float32 to avoid mixed dtype errors "
+            "(default: True). Use --no-force-fp32 to disable."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable Ultralytics verbose logging.",
@@ -135,6 +144,7 @@ def main() -> None:
 
     overrides = mask_humans._build_overrides(args)
     predictor = mask_humans.SAM3VideoSemanticPredictor(overrides=overrides)
+    mask_humans._maybe_force_fp32(predictor, args.force_fp32, args.half)
 
     output_root = Path(args.output_root)
     relative_to = Path(args.relative_to) if args.relative_to else None

@@ -121,6 +121,20 @@ def _build_overrides(args: argparse.Namespace) -> dict:
     return overrides
 
 
+def _maybe_force_fp32(
+    predictor: SAM3VideoSemanticPredictor, enabled: bool, half: bool
+) -> None:
+    if not enabled or half:
+        return
+    try:
+        predictor.model.float()
+    except Exception:
+        try:
+            predictor.model = predictor.model.float()
+        except Exception:
+            return
+
+
 def _process_video(
     src: Path,
     out_dir: Path,
@@ -280,6 +294,15 @@ def parse_args() -> argparse.Namespace:
         help="Use FP16 (recommended only on GPU).",
     )
     parser.add_argument(
+        "--force-fp32",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Force model to float32 to avoid mixed dtype errors "
+            "(default: True). Use --no-force-fp32 to disable."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable Ultralytics verbose logging.",
@@ -319,6 +342,7 @@ def main() -> None:
 
     overrides = _build_overrides(args)
     predictor = SAM3VideoSemanticPredictor(overrides=overrides)
+    _maybe_force_fp32(predictor, args.force_fp32, args.half)
 
     out_dir = Path(args.output_dir)
     for src in inputs:

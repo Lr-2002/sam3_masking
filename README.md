@@ -34,6 +34,10 @@ If `datasets.load_dataset` fails (e.g. dataset script issues), the script
 falls back to a Hub snapshot download. You can force a backend with
 `--download-backend datasets` or `--download-backend hub`.
 
+If you hit a mixed-precision error like `mat1 and mat2 must have the same dtype`,
+the scripts now default to forcing FP32 (`--force-fp32`). You can disable it
+with `--no-force-fp32` or explicitly try FP16 with `--half`.
+
 ## Notes
 - Default prompt is `"person"`. Use comma-separated prompts for multiple classes.
 - The script looks for MP4s in the dataset path first, then `./videos`, then current directory.
